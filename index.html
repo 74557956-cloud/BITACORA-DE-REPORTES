@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bitácora de Reportes - UNACEM</title>
+  <!-- Chart.js + Plugin DataLabels + SheetJS (para Exportar a Excel) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #121212;
+      --bg-panel: #1e1e1e;
+      --bg-card: #2a2a2a;
+      --text-main: #ffffff;
+      --text-muted: #aaaaaa;
+      --red-unacem: #e30613;
+      --green-status: #28a745;
+      --yellow-status: #ffc107;
+      --blue-status: #007bff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--bg-dark); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+
+    /* FILTROS LATERALES */
+    .sidebar {
+      width: 270px;
+      background-color: #000000;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-right: 1px solid #333;
+      overflow-y: auto;
+    }
+    .logo-container { text-align: center; margin-bottom: 5px; }
+    .logo-container h1 { color: var(--red-unacem); font-size: 24px; font-weight: bold; }
+    .sidebar h2 { font-size: 16px; border-bottom: 2px solid var(--red-unacem); padding-bottom: 4px; margin-bottom: 5px; }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .filter-group label { font-size: 10px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; }
+    .filter-group select {
+      background-color: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid #444;
+      padding: 6px;
+      border-radius: 4px;
+      outline: none;
+      font-size: 12px;
+    }
+
+    .btn-exportar {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #28a745;
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 11px;
+      text-transform: uppercase;
+      transition: background-color 0.2s;
+    }
+    .btn-exportar:hover { background-color: #218838; }
+
+    /* CONTENIDO PRINCIPAL */
+    .main-content { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .header { background-color: #000; padding: 8px; text-align: center; font-size: 18px; font-weight: bold; letter-spacing: 1.5px; border-radius: 4px; }
+
+    /* KPIs */
+    .kpi-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .kpi-card { background-color: var(--bg-card); padding: 8px; border-radius: 4px; text-align: center; border-top: 4px solid #666; }
+    .kpi-card.total { border-color: var(--blue-status); }
+    .kpi-card.culminados { border-color: var(--green-status); }
+    .kpi-card.progreso { border-color: var(--yellow-status); }
+    .kpi-card.pendientes { border-color: var(--red-unacem); }
+    .kpi-title { font-size: 11px; text-transform: uppercase; color: var(--text-muted); }
+    .kpi-value { font-size: 20px; font-weight: bold; margin-top: 2px; }
+
+    /* PANEL DE GRÁFICOS */
+    .charts-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .chart-card { background-color: var(--bg-card); padding: 8px; border-radius: 4px; height: 210px; display: flex; flex-direction: column; position: relative; }
+    .chart-card h4 { font-size: 10px; text-align: center; margin-bottom: 5px; color: var(--text-muted); text-transform: uppercase; }
+    .chart-box { flex: 1; position: relative; width: 100%; height: 100%; min-height: 0; }
+
+    /* TABLA DE DATOS */
+    .table-container { background-color: var(--bg-card); border-radius: 4px; padding: 10px; flex: 1; overflow-x: auto; overflow-y: auto; }
+    .table-container h4 { font-size: 12px; margin-bottom: 8px; color: var(--text-muted); text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
+    th { background-color: #111; padding: 8px 6px; text-align: left; border: 1px solid #333; color: #fff; font-size: 10px; position: sticky; top: 0; z-index: 10; }
+    td { padding: 6px; border: 1px solid #333; }
+    tr:nth-child(even) { background-color: #222; }
+
+    /* INSIGNIAS DE ESTADO */
+    .badge { padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 9px; text-align: center; display: inline-block; }
+    .badge-culminado { background-color: var(--green-status); color: #fff; }
+    .badge-progreso { background-color: var(--yellow-status); color: #000; }
+    .badge-pendiente { background-color: var(--red-unacem); color: #fff; }
+
+    a.pdf-link { color: #00aaff; text-decoration: underline; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <!-- BARRA LATERAL FILTROS -->
+  <div class="sidebar">
+    <div class="logo-container">
+      <h1>UNACEM</h1>
+    </div>
+    <h2>Filtros</h2>
+    
+    <div class="filter-group">
+      <label>Reporte por Mes</label>
+      <select id="filterMes" onchange="aplicarFiltros()"><option value="Todas">Todas</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Persona que Reportó</label>
+      <select id="filterPersona" onchange="aplicarFiltros()"><option value="Todas">Todas</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Ing. Supervisor del Reporte</label>
+      <select id="filterSupervisor" onchange="aplicarFiltros()"><option value="Todas">Todas</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Estado del Reporte</label>
+      <select id="filterEstado" onchange="aplicarFiltros()"><option value="Todas">Todas</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Responsable para la Observación</label>
+      <select id="filterResponsableCierre" onchange="aplicarFiltros()"><option value="Todas">Todas</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Contrata</label>
+      <select id="filterContrata" onchange="aplicarFiltros()"><option value="Todas">Todas</option></select>
+    </div>
+
+    <button class="btn-exportar" onclick="exportarExcel()">
+      📥 Exportar a Excel
+    </button>
+  </div>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <div class="main-content">
+    <div class="header">BITÁCORA DE REPORTES</div>
+
+    <!-- KPIs -->
+    <div class="kpi-container">
+      <div class="kpi-card total">
+        <div class="kpi-title">Total de Reportes</div>
+        <div class="kpi-value" id="kpiTotal">0</div>
+      </div>
+      <div class="kpi-card culminados">
+        <div class="kpi-title">Reportes Culminados</div>
+        <div class="kpi-value" id="kpiCulminados">0</div>
+      </div>
+      <div class="kpi-card progreso">
+        <div class="kpi-title">Reportes en Progreso</div>
+        <div class="kpi-value" id="kpiProgreso">0</div>
+      </div>
+      <div class="kpi-card pendientes">
+        <div class="kpi-title">Reportes Pendientes</div>
+        <div class="kpi-value" id="kpiPendientes">0</div>
+      </div>
+    </div>
+
+    <!-- PANEL DE GRÁFICOS -->
+    <div class="charts-container">
+      <div class="chart-card">
+        <h4>ESTADO DE REPORTES</h4>
+        <div class="chart-box"><canvas id="chartEstado"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h4>REPORTE POR CATEGORÍA DE EQUIPO</h4>
+        <div class="chart-box"><canvas id="chartCategoria"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h4>NÚMERO DE REPORTES POR UBICACIÓN</h4>
+        <div class="chart-box"><canvas id="chartUbicacion"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h4>CONTRATISTA RESPONSABLE DE LA OBS.</h4>
+        <div class="chart-box"><canvas id="chartContratista"></canvas></div>
+      </div>
+    </div>
+
+    <!-- TABLA DE REPORTES DMEG -->
+    <div class="table-container">
+      <h4>REPORTES DMEG</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>FECHA</th>
+            <th>RESPONSABLE DE REPORTE</th>
+            <th>UBICACIÓN TÉCNICA</th>
+            <th>EQUIPO</th>
+            <th>ESTADO DE OBSERVACION</th>
+            <th>INGENIERO A CARGO</th>
+            <th>RESPONSABLE PARA LA OBSERVACION</th>
+            <th>CONTRATA</th>
+            <th>LINK PDF</th>
+          </tr>
+        </thead>
+        <tbody id="tablaCuerpo">
+          <tr><td colspan="9">Cargando datos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    Chart.register(ChartDataLabels);
+
+    const URL_POWER_AUTOMATE = "https://default6d25241940fe4964bb31e8aaa96d97.66.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/24/workflows/750f1b2c9e714b158214ac12ed15e9d3/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=NVwN26K4N9iglhBzXE3MzGb4py7J7lKrAvbHGxdLe0Q";
+
+    let datosGlobales = [];
+    let datosFiltradosActuales = [];
+    let chartEstadoInst, chartCategoriaInst, chartUbicacionInst, chartContratistaInst;
+
+    async function obtenerDatos() {
+      try {
+        const respuesta = await fetch(URL_POWER_AUTOMATE, { method: 'GET' });
+        let datosJson = await respuesta.json();
+
+        let datosSP = [];
+        let datosExcel = [];
+
+        if (datosJson && datosJson.sharepoint) {
+          datosSP = Array.isArray(datosJson.sharepoint) ? datosJson.sharepoint : (datosJson.sharepoint.value || []);
+        } else if (datosJson && datosJson.value && Array.isArray(datosJson.value)) {
+          datosSP = datosJson.value;
+        } else if (Array.isArray(datosJson)) {
+          datosSP = datosJson;
+        }
+
+        if (datosJson && datosJson.excel) {
+          datosExcel = Array.isArray(datosJson.excel) ? datosJson.excel : (datosJson.excel.value || []);
+        }
+
+        datosGlobales = datosSP.map(itemSP => {
+          const ubiSP = extraerPropiedad(itemSP, ['Ubicaci_x00f3_nt_x00e9_cnica', 'NOMBREEQUIPO', 'Ubicaci_x00f3_nPlanta', 'Ubicacion']);
+          let linkPdf = extraerPropiedad(itemSP, ['LINKPDF', 'LinkReportePDF', 'LinkPDF', 'LINK PDF']);
+
+          if (!linkPdf && datosExcel.length > 0 && ubiSP !== '') {
+            const coincidencia = datosExcel.find(itemExcel => {
+              const ubiExcel = (itemExcel['NOMBREEQUIPO'] || itemExcel['NombreEquipo'] || itemExcel['nombreEquipo'] || '').toString().trim().toUpperCase();
+              return ubiExcel !== '' && ubiExcel === ubiSP.toUpperCase();
+            });
+
+            if (coincidencia) {
+              linkPdf = coincidencia['LINKPDF'] || coincidencia['LinkPDF'] || coincidencia['linkpdf'] || coincidencia['LINK PDF'] || '';
+            }
+          }
+
+          return {
+            ...itemSP,
+            _UbicacionTecnicaCalculada: ubiSP,
+            LinkReportePDF: linkPdf
+          };
+        });
+
+        poblarFiltros(datosGlobales);
+        aplicarFiltros();
+      } catch (e) {
+        console.error("Error al obtener datos:", e);
+      }
+    }
+
+    function extraerPropiedad(item, listaNombres) {
+      if (!item) return '';
+      for (const clave of listaNombres) {
+        if (item[clave] !== undefined && item[clave] !== null) {
+          const val = item[clave];
+          if (typeof val === 'object') {
+            return (val.Value || val.DisplayName || val.value || '').toString().trim();
+          }
+          return val.toString().trim();
+        }
+      }
+      return '';
+    }
+
+    function poblarFiltros(datos) {
+      const meses = new Set();
+      const personas = new Set();
+      const supervisores = new Set();
+      const estados = new Set();
+      const respCierre = new Set();
+      const contratas = new Set();
+
+      datos.forEach(item => {
+        const fRaw = item.FECHA || item.Fecha || item.Created;
+        if (fRaw) {
+          let d = new Date(fRaw);
+          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
+            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
+          }
+          if (!isNaN(d)) {
+            const mesNom = d.toLocaleString('es-ES', { month: 'long' });
+            meses.add(mesNom.charAt(0).toUpperCase() + mesNom.slice(1));
+          }
+        }
+        
+        const resp = extraerPropiedad(item, ['RESPONSABLE', 'Responsable']);
+        if (resp) personas.add(resp);
+
+        // MAPEO AMPLIADO PARA SUPERVISORES
+        const sup = extraerPropiedad(item, [
+          'INGENIERO_x0020_A_x0020_CARGO', 
+          'Supervisorencargado', 
+          'Supervisor', 
+          'Ingeniero', 
+          'INGENIERO', 
+          'Author'
+        ]);
+        if (sup) supervisores.add(sup);
+
+        const est = extraerPropiedad(item, ['ESTADOOBSERVACION', 'ESTADO', 'Estado']);
+        if (est) estados.add(est);
+
+        const respObs = extraerPropiedad(item, ['ResponsableparalaObservaci_x00f3', 'RESPONSABLE_x0020_PARA_x0020_OBSERVACI_x00d3_N', 'Responsableparaobservacion']);
+        if (respObs) respCierre.add(respObs);
+
+        const cont = extraerPropiedad(item, ['CONTRATISTA', 'Contratista', 'Contrata']);
+        if (cont) contratas.add(cont);
+      });
+
+      llenarSelect('filterMes', meses);
+      llenarSelect('filterPersona', personas);
+      llenarSelect('filterSupervisor', supervisores);
+      llenarSelect('filterEstado', estados);
+      llenarSelect('filterResponsableCierre', respCierre);
+      llenarSelect('filterContrata', contratas);
+    }
+
+    function llenarSelect(id, setValores) {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      sel.innerHTML = '<option value="Todas">Todas</option>';
+      Array.from(setValores).sort().forEach(val => {
+        sel.innerHTML += `<option value="${val}">${val}</option>`;
+      });
+    }
+
+    function aplicarFiltros() {
+      const fMes = document.getElementById('filterMes').value;
+      const fPersona = document.getElementById('filterPersona').value;
+      const fSupervisor = document.getElementById('filterSupervisor').value;
+      const fEstado = document.getElementById('filterEstado').value;
+      const fRespCierre = document.getElementById('filterResponsableCierre').value;
+      const fContrata = document.getElementById('filterContrata') ? document.getElementById('filterContrata').value : 'Todas';
+
+      datosFiltradosActuales = datosGlobales.filter(item => {
+        const fRaw = item.FECHA || item.Fecha || item.Created;
+        let mesNom = '';
+        if (fRaw) {
+          let d = new Date(fRaw);
+          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
+            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
+          }
+          if (!isNaN(d)) {
+            mesNom = d.toLocaleString('es-ES', { month: 'long' });
+            mesNom = mesNom.charAt(0).toUpperCase() + mesNom.slice(1);
+          }
+        }
+        
+        const resp = extraerPropiedad(item, ['RESPONSABLE', 'Responsable']);
+        
+        // EVALUACIÓN AMPLIADA DEL SUPERVISOR
+        const sup = extraerPropiedad(item, [
+          'INGENIERO_x0020_A_x0020_CARGO', 
+          'Supervisorencargado', 
+          'Supervisor', 
+          'Ingeniero', 
+          'INGENIERO', 
+          'Author'
+        ]);
+
+        const est = extraerPropiedad(item, ['ESTADOOBSERVACION', 'ESTADO', 'Estado']);
+        const respObs = extraerPropiedad(item, ['ResponsableparalaObservaci_x00f3', 'RESPONSABLE_x0020_PARA_x0020_OBSERVACI_x00d3_N', 'Responsableparaobservacion']);
+        const cont = extraerPropiedad(item, ['CONTRATISTA', 'Contratista', 'Contrata']);
+
+        const condMes = (fMes === 'Todas' || mesNom === fMes);
+        const condPersona = (fPersona === 'Todas' || resp === fPersona);
+        const condSupervisor = (fSupervisor === 'Todas' || sup === fSupervisor);
+        const condEstado = (fEstado === 'Todas' || est === fEstado);
+        const condRespCierre = (fRespCierre === 'Todas' || respObs === fRespCierre);
+        const condContrata = (fContrata === 'Todas' || cont === fContrata);
+
+        return condMes && condPersona && condSupervisor && condEstado && condRespCierre && condContrata;
+      });
+
+      renderizarDashboard(datosFiltradosActuales);
+    }
+
+    function renderizarDashboard(datos) {
+      document.getElementById('kpiTotal').innerText = datos.length;
+
+      let culminados = 0, progreso = 0, pendientes = 0;
+      const catCounts = {}, ubiCounts = {}, contCounts = {};
+
+      const tabla = document.getElementById('tablaCuerpo');
+      tabla.innerHTML = '';
+
+      datos.forEach(item => {
+        const fRaw = item.FECHA || item.Fecha || item.Created;
+        let fecha = '';
+        if (fRaw) {
+          let d = new Date(fRaw);
+          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
+            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
+          }
+          fecha = !isNaN(d) ? d.toLocaleDateString('es-PE') : '';
+        }
+
+        const responsable = extraerPropiedad(item, ['RESPONSABLE', 'Responsable']);
+        const ubicacionTecnica = item._UbicacionTecnicaCalculada || extraerPropiedad(item, ['Ubicaci_x00f3_nt_x00e9_cnica', 'NOMBREEQUIPO']);
+        const equipo = extraerPropiedad(item, ['NombreEquipo', 'Equipo']);
+        const ingeniero = extraerPropiedad(item, ['INGENIERO_x0020_A_x0020_CARGO', 'Supervisorencargado', 'Supervisor', 'Ingeniero']);
+        const respObservacion = extraerPropiedad(item, ['ResponsableparalaObservaci_x00f3', 'RESPONSABLE_x0020_PARA_x0020_OBSERVACI_x00d3_N', 'Responsableparaobservacion']);
+        const contrata = extraerPropiedad(item, ['CONTRATISTA', 'Contratista', 'Contrata']);
+
+        const pdfUrl = item.LinkReportePDF || '';
+        const pdfHtml = pdfUrl ? `<a class="pdf-link" href="${pdfUrl}" target="_blank">Ver PDF</a>` : '';
+
+        const estadoTexto = extraerPropiedad(item, ['ESTADOOBSERVACION', 'ESTADO', 'Estado']);
+        const estadoUpper = estadoTexto.toUpperCase();
+
+        let badgeClass = 'badge-pendiente';
+        if (estadoUpper.includes('CULMINADO') || estadoUpper.includes('RESUELTO')) {
+          badgeClass = 'badge-culminado';
+          culminados++;
+        } else if (estadoUpper.includes('PROGRESO')) {
+          badgeClass = 'badge-progreso';
+          progreso++;
+        } else {
+          badgeClass = 'badge-pendiente';
+          pendientes++;
+        }
+
+        const cat = extraerPropiedad(item, ['Categoria_x0020_Equipo', 'CategoriaEquipo', 'Equipo']) || 'General';
+        catCounts[cat] = (catCounts[cat] || 0) + 1;
+
+        const ubi = extraerPropiedad(item, ['Ubicaci_x00f3_nPlanta', 'Ubicacion']) || 'Planta Principal';
+        ubiCounts[ubi] = (ubiCounts[ubi] || 0) + 1;
+
+        if (contrata) {
+          contCounts[contrata] = (contCounts[contrata] || 0) + 1;
+        }
+
+        tabla.innerHTML += `
+          <tr>
+            <td>${fecha}</td>
+            <td>${responsable}</td>
+            <td>${ubicacionTecnica}</td>
+            <td>${equipo}</td>
+            <td>${estadoTexto ? `<span class="badge ${badgeClass}">${estadoTexto}</span>` : ''}</td>
+            <td>${ingeniero}</td>
+            <td>${respObservacion}</td>
+            <td>${contrata}</td>
+            <td>${pdfHtml}</td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('kpiCulminados').innerText = culminados;
+      document.getElementById('kpiProgreso').innerText = progreso;
+      document.getElementById('kpiPendientes').innerText = pendientes;
+
+      renderizarGraficos(culminados, progreso, pendientes, catCounts, ubiCounts, contCounts);
+    }
+
+    function renderizarGraficos(cul, prog, pend, catCounts, ubiCounts, contCounts) {
+      // 1. Estado de Reportes (Filtrado al hacer clic)
+      if (chartEstadoInst) chartEstadoInst.destroy();
+      chartEstadoInst = new Chart(document.getElementById('chartEstado'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Culminados', 'En Progreso', 'Pendientes'],
+          datasets: [{ data: [cul, prog, pend], backgroundColor: ['#28a745', '#ffc107', '#e30613'] }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (e, elements) => {
+            if (elements.length > 0) {
+              const label = ['Culminados', 'En Progreso', 'Pendientes'][elements[0].index];
+              const sel = document.getElementById('filterEstado');
+              if (sel) {
+                const opt = Array.from(sel.options).find(o => o.text.toUpperCase().includes(label.substring(0, 4).toUpperCase()));
+                sel.value = opt ? opt.value : 'Todas';
+                aplicarFiltros();
+              }
+            }
+          },
+          plugins: {
+            legend: { display: true, position: 'top', labels: { color: '#ffffff', font: { size: 9 } } },
+            datalabels: { color: '#ffffff', font: { weight: 'bold', size: 11 }, formatter: (v) => v > 0 ? v : '' }
+          }
+        }
+      });
+
+      // 2. Categoría
+      if (chartCategoriaInst) chartCategoriaInst.destroy();
+      chartCategoriaInst = new Chart(document.getElementById('chartCategoria'), {
+        type: 'bar',
+        data: { labels: Object.keys(catCounts), datasets: [{ data: Object.values(catCounts), backgroundColor: '#28a745' }] },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { left: 10, right: 20 } },
+          plugins: {
+            legend: { display: false },
+            datalabels: { color: '#ffffff', anchor: 'end', align: 'right', font: { weight: 'bold', size: 10 }, formatter: (v) => v > 0 ? v : '' }
+          },
+          scales: {
+            x: { ticks: { color: '#ffffff', font: { size: 9 } }, grid: { color: '#333333' } },
+            y: { ticks: { color: '#ffffff', font: { size: 10, weight: 'bold' } }, grid: { color: '#333333' } }
+          }
+        }
+      });
+
+      // 3. Ubicación
+      if (chartUbicacionInst) chartUbicacionInst.destroy();
+      chartUbicacionInst = new Chart(document.getElementById('chartUbicacion'), {
+        type: 'bar',
+        data: { labels: Object.keys(ubiCounts), datasets: [{ data: Object.values(ubiCounts), backgroundColor: '#007bff' }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: { color: '#ffffff', anchor: 'end', align: 'top', font: { weight: 'bold', size: 10 }, formatter: (v) => v > 0 ? v : '' }
+          },
+          scales: {
+            x: { ticks: { color: '#ffffff', font: { size: 9 } }, grid: { color: '#333333' } },
+            y: { ticks: { color: '#ffffff', font: { size: 9 } }, grid: { color: '#333333' } }
+          }
+        }
+      });
+
+      // 4. Contratista Responsable (Filtrado al hacer clic)
+      if (chartContratistaInst) chartContratistaInst.destroy();
+      chartContratistaInst = new Chart(document.getElementById('chartContratista'), {
+        type: 'bar',
+        data: { labels: Object.keys(contCounts), datasets: [{ data: Object.values(contCounts), backgroundColor: '#007bff' }] },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { left: 10, right: 25 } },
+          onClick: (e, elements) => {
+            if (elements.length > 0) {
+              const contrataNombre = Object.keys(contCounts)[elements[0].index];
+              const sel = document.getElementById('filterContrata');
+              if (sel) {
+                sel.value = contrataNombre;
+                aplicarFiltros();
+              }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            datalabels: { color: '#ffffff', anchor: 'end', align: 'right', font: { weight: 'bold', size: 10 }, formatter: (v) => v > 0 ? v : '' }
+          },
+          scales: {
+            x: { ticks: { color: '#ffffff', font: { size: 9 } }, grid: { color: '#333333' } },
+            y: { ticks: { color: '#ffffff', font: { size: 10, weight: 'bold' } }, grid: { color: '#333333' } }
+          }
+        }
+      });
+    }
+
+    // Exportar tabla a archivo Excel
+    function exportarExcel() {
+      if (!datosFiltradosActuales || datosFiltradosActuales.length === 0) {
+        alert("No hay registros en pantalla para exportar.");
+        return;
+      }
+
+      const filasExportar = datosFiltradosActuales.map(item => {
+        const fRaw = item.FECHA || item.Fecha || item.Created;
+        let fecha = '';
+        if (fRaw) {
+          let d = new Date(fRaw);
+          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
+            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
+          }
+          fecha = !isNaN(d) ? d.toLocaleDateString('es-PE') : '';
+        }
+
+        return {
+          "FECHA DE REPORTE": fecha,
+          "RESPONSABLE DE REPORTE": extraerPropiedad(item, ['RESPONSABLE', 'Responsable']),
+          "UBICACIÓN TÉCNICA": item._UbicacionTecnicaCalculada || extraerPropiedad(item, ['Ubicaci_x00f3_nt_x00e9_cnica', 'NOMBREEQUIPO']),
+          "EQUIPO": extraerPropiedad(item, ['NombreEquipo', 'Equipo']),
+          "ESTADO DE OBSERVACIÓN": extraerPropiedad(item, ['ESTADOOBSERVACION', 'ESTADO', 'Estado']),
+          "INGENIERO A CARGO": extraerPropiedad(item, ['INGENIERO_x0020_A_x0020_CARGO', 'Supervisorencargado', 'Supervisor', 'Ingeniero']),
+          "RESPONSABLE PARA LA OBSERVACIÓN": extraerPropiedad(item, ['ResponsableparalaObservaci_x00f3', 'RESPONSABLE_x0020_PARA_x0020_OBSERVACI_x00d3_N', 'Responsableparaobservacion']),
+          "CONTRATA": extraerPropiedad(item, ['CONTRATISTA', 'Contratista', 'Contrata']),
+          "LINK PDF": item.LinkReportePDF || ''
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(filasExportar);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Reportes_Filtrados");
+      XLSX.writeFile(wb, `Bitacora_Reportes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    obtenerDatos();
+  </script>
+</body>
+</html>
