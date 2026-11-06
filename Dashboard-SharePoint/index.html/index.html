@@ -90,6 +90,18 @@
     .table-container h4 { font-size: 12px; margin-bottom: 8px; color: var(--text-muted); text-transform: uppercase; }
     table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
     th { background-color: #111; padding: 8px 6px; text-align: left; border: 1px solid #333; color: #fff; font-size: 10px; position: sticky; top: 0; z-index: 10; }
+    
+    /* ESTILO PARA CABECERA ORDENABLE POR FECHA */
+    th.sortable-header {
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.2s;
+    }
+    th.sortable-header:hover {
+      background-color: #222;
+      color: #00aaff;
+    }
+
     td { padding: 6px; border: 1px solid #333; }
     tr:nth-child(even) { background-color: #222; }
 
@@ -191,7 +203,9 @@
       <table>
         <thead>
           <tr>
-            <th>FECHA</th>
+            <th class="sortable-header" onclick="toggleOrdenFecha()" title="Clic para cambiar orden de fecha">
+              FECHA <span id="iconoOrdenFecha">▼</span>
+            </th>
             <th>RESPONSABLE DE REPORTE</th>
             <th>UBICACIÓN TÉCNICA</th>
             <th>EQUIPO</th>
@@ -217,6 +231,29 @@
     let datosGlobales = [];
     let datosFiltradosActuales = [];
     let chartEstadoInst, chartCategoriaInst, chartUbicacionInst, chartContratistaInst;
+    
+    // Variable para controlar el orden de fecha (true = descendente / última fecha primero)
+    let ordenFechaDesc = true;
+
+    // Función auxiliar para parsear fechas de varios formatos
+    function obtenerObjetoFecha(fRaw) {
+      if (!fRaw) return null;
+      let d = new Date(fRaw);
+      if (typeof fRaw === 'number' || (!isNaN(fRaw) && !isNaN(parseFloat(fRaw)))) {
+        d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
+      }
+      return !isNaN(d.getTime()) ? d : null;
+    }
+
+    // Función para alternar el sentido de orden por fecha al hacer clic
+    function toggleOrdenFecha() {
+      ordenFechaDesc = !ordenFechaDesc;
+      const icono = document.getElementById('iconoOrdenFecha');
+      if (icono) {
+        icono.innerText = ordenFechaDesc ? '▼' : '▲';
+      }
+      aplicarFiltros();
+    }
 
     async function obtenerDatos() {
       try {
@@ -291,28 +328,21 @@
 
       datos.forEach(item => {
         const fRaw = item.FECHA || item.Fecha || item.Created;
-        if (fRaw) {
-          let d = new Date(fRaw);
-          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
-            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
-          }
-          if (!isNaN(d)) {
-            const mesNom = d.toLocaleString('es-ES', { month: 'long' });
-            meses.add(mesNom.charAt(0).toUpperCase() + mesNom.slice(1));
-          }
+        const d = obtenerObjetoFecha(fRaw);
+        if (d) {
+          const mesNom = d.toLocaleString('es-ES', { month: 'long' });
+          meses.add(mesNom.charAt(0).toUpperCase() + mesNom.slice(1));
         }
         
         const resp = extraerPropiedad(item, ['RESPONSABLE', 'Responsable']);
         if (resp) personas.add(resp);
 
-        // MAPEO AMPLIADO PARA SUPERVISORES
         const sup = extraerPropiedad(item, [
           'INGENIERO_x0020_A_x0020_CARGO', 
           'Supervisorencargado', 
           'Supervisor', 
           'Ingeniero', 
-          'INGENIERO', 
-          'Author'
+          'INGENIERO'
         ]);
         if (sup) supervisores.add(sup);
 
@@ -353,30 +383,21 @@
 
       datosFiltradosActuales = datosGlobales.filter(item => {
         const fRaw = item.FECHA || item.Fecha || item.Created;
+        const d = obtenerObjetoFecha(fRaw);
         let mesNom = '';
-        if (fRaw) {
-          let d = new Date(fRaw);
-          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
-            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
-          }
-          if (!isNaN(d)) {
-            mesNom = d.toLocaleString('es-ES', { month: 'long' });
-            mesNom = mesNom.charAt(0).toUpperCase() + mesNom.slice(1);
-          }
+        if (d) {
+          mesNom = d.toLocaleString('es-ES', { month: 'long' });
+          mesNom = mesNom.charAt(0).toUpperCase() + mesNom.slice(1);
         }
         
         const resp = extraerPropiedad(item, ['RESPONSABLE', 'Responsable']);
-        
-        // EVALUACIÓN AMPLIADA DEL SUPERVISOR
         const sup = extraerPropiedad(item, [
           'INGENIERO_x0020_A_x0020_CARGO', 
           'Supervisorencargado', 
           'Supervisor', 
           'Ingeniero', 
-          'INGENIERO', 
-          'Author'
+          'INGENIERO'
         ]);
-
         const est = extraerPropiedad(item, ['ESTADOOBSERVACION', 'ESTADO', 'Estado']);
         const respObs = extraerPropiedad(item, ['ResponsableparalaObservaci_x00f3', 'RESPONSABLE_x0020_PARA_x0020_OBSERVACI_x00d3_N', 'Responsableparaobservacion']);
         const cont = extraerPropiedad(item, ['CONTRATISTA', 'Contratista', 'Contrata']);
@@ -389,6 +410,19 @@
         const condContrata = (fContrata === 'Todas' || cont === fContrata);
 
         return condMes && condPersona && condSupervisor && condEstado && condRespCierre && condContrata;
+      });
+
+      // ORDENAR DATOS POR FECHA (Ascendente o Descendente según ordenFechaDesc)
+      datosFiltradosActuales.sort((a, b) => {
+        const fRawA = a.FECHA || a.Fecha || a.Created;
+        const fRawB = b.FECHA || b.Fecha || b.Created;
+        const dA = obtenerObjetoFecha(fRawA);
+        const dB = obtenerObjetoFecha(fRawB);
+
+        const timeA = dA ? dA.getTime() : 0;
+        const timeB = dB ? dB.getTime() : 0;
+
+        return ordenFechaDesc ? (timeB - timeA) : (timeA - timeB);
       });
 
       renderizarDashboard(datosFiltradosActuales);
@@ -405,19 +439,13 @@
 
       datos.forEach(item => {
         const fRaw = item.FECHA || item.Fecha || item.Created;
-        let fecha = '';
-        if (fRaw) {
-          let d = new Date(fRaw);
-          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
-            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
-          }
-          fecha = !isNaN(d) ? d.toLocaleDateString('es-PE') : '';
-        }
+        const d = obtenerObjetoFecha(fRaw);
+        const fecha = d ? d.toLocaleDateString('es-PE') : '';
 
         const responsable = extraerPropiedad(item, ['RESPONSABLE', 'Responsable']);
         const ubicacionTecnica = item._UbicacionTecnicaCalculada || extraerPropiedad(item, ['Ubicaci_x00f3_nt_x00e9_cnica', 'NOMBREEQUIPO']);
         const equipo = extraerPropiedad(item, ['NombreEquipo', 'Equipo']);
-        const ingeniero = extraerPropiedad(item, ['INGENIERO_x0020_A_x0020_CARGO', 'Supervisorencargado', 'Supervisor', 'Ingeniero', 'Author']);
+        const ingeniero = extraerPropiedad(item, ['INGENIERO_x0020_A_x0020_CARGO', 'Supervisorencargado', 'Supervisor', 'Ingeniero']);
         const respObservacion = extraerPropiedad(item, ['ResponsableparalaObservaci_x00f3', 'RESPONSABLE_x0020_PARA_x0020_OBSERVACI_x00d3_N', 'Responsableparaobservacion']);
         const contrata = extraerPropiedad(item, ['CONTRATISTA', 'Contratista', 'Contrata']);
 
@@ -472,7 +500,7 @@
     }
 
     function renderizarGraficos(cul, prog, pend, catCounts, ubiCounts, contCounts) {
-      // 1. Estado de Reportes (Filtrado al hacer clic)
+      // 1. Estado de Reportes
       if (chartEstadoInst) chartEstadoInst.destroy();
       chartEstadoInst = new Chart(document.getElementById('chartEstado'), {
         type: 'doughnut',
@@ -541,7 +569,7 @@
         }
       });
 
-      // 4. Contratista Responsable (Filtrado al hacer clic)
+      // 4. Contratista Responsable
       if (chartContratistaInst) chartContratistaInst.destroy();
       chartContratistaInst = new Chart(document.getElementById('chartContratista'), {
         type: 'bar',
@@ -582,14 +610,8 @@
 
       const filasExportar = datosFiltradosActuales.map(item => {
         const fRaw = item.FECHA || item.Fecha || item.Created;
-        let fecha = '';
-        if (fRaw) {
-          let d = new Date(fRaw);
-          if (typeof fRaw === 'number' || !isNaN(fRaw)) {
-            d = new Date((fRaw - (25567 + 2)) * 86400 * 1000);
-          }
-          fecha = !isNaN(d) ? d.toLocaleDateString('es-PE') : '';
-        }
+        const d = obtenerObjetoFecha(fRaw);
+        const fecha = d ? d.toLocaleDateString('es-PE') : '';
 
         return {
           "FECHA DE REPORTE": fecha,
