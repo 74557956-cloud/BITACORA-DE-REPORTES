@@ -34,6 +34,7 @@
       gap: 12px;
       border-right: 1px solid #333;
       overflow-y: auto;
+      flex-shrink: 0;
     }
     .logo-container { text-align: center; margin-bottom: 5px; }
     .logo-container h1 { color: var(--red-unacem); font-size: 24px; font-weight: bold; }
@@ -48,6 +49,7 @@
       border-radius: 4px;
       outline: none;
       font-size: 12px;
+      width: 100%;
     }
 
     .btn-exportar {
@@ -62,6 +64,7 @@
       font-size: 11px;
       text-transform: uppercase;
       transition: background-color 0.2s;
+      width: 100%;
     }
     .btn-exportar:hover { background-color: #218838; }
 
@@ -112,6 +115,54 @@
     .badge-pendiente { background-color: var(--red-unacem); color: #fff; }
 
     a.pdf-link { color: #00aaff; text-decoration: underline; font-weight: bold; }
+
+    /* =========================================================
+       DISEÑO RESPONSIVO PARA CELULARES Y TABLETS
+       ========================================================= */
+    @media (max-width: 1024px) {
+      .charts-container { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+        height: auto;
+        overflow-y: auto;
+      }
+
+      .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #333;
+        overflow-y: visible;
+      }
+
+      .main-content {
+        overflow-y: visible;
+      }
+
+      .kpi-container {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .charts-container {
+        grid-template-columns: 1fr;
+      }
+
+      .chart-card {
+        height: 250px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .kpi-container {
+        grid-template-columns: 1fr;
+      }
+
+      .header {
+        font-size: 15px;
+      }
+    }
   </style>
 </head>
 <body>
